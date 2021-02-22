@@ -9,7 +9,7 @@
 To install `pandas_datareader`: 
 
 ```
-pip install wrds pandas_datareader
+pip install pandas_datareader
 ```
 
 The following code pulls BMW historical (split and dividend) adjusted price between 1/1/2001 and 1/2/2021 from yahoo finance:
