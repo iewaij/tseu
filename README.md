@@ -1,5 +1,13 @@
 # Trading Strategies on the European Stock Market
 
+- [Trading Strategies on the European Stock Market](#trading-strategies-on-the-european-stock-market)
+  - [Data Source](#data-source)
+    - [pandas-datareader](#pandas-datareader)
+    - [WRDS](#wrds)
+  - [Exchange Data](#exchange-data)
+  - [Fundamental Data](#fundamental-data)
+  - [Estimate Data](#estimate-data)
+
 ## Data Source
 
 ### pandas-datareader 
@@ -118,7 +126,7 @@ def get_data_wrds():
         )
     return data
 ```
-## Exchange
+## Exchange Data
 We will limit our scope to major reference European exchanges. Here are their codes in WRDS:
 
 | exchg |        exchgdesc        |
@@ -165,7 +173,7 @@ WHERE
 	AND ibtic IS NOT NULL;
 ```
 
-Using the query as sub-query, we can find the daily stock prices for companies on major European exchanges.
+Using the above query as sub-query, we can find the daily stock prices for companies on major European exchanges:
 
 ```sql
 SELECT
@@ -200,4 +208,49 @@ ORDER BY
 
 ## Fundamental Data
 
-## Analyst Data
+Fundamenatal data is available on WRDS as a table called `g_fundq`. The columns' definition can be found [here](https://wrds-www.wharton.upenn.edu/data-dictionary/comp_global_daily/g_fundq/). The following code queries fundamental data of companies on major European exchanges:
+
+```sql
+SELECT
+	*
+FROM
+	comp_global_daily.g_fundq AS security_fundamental,
+	(
+		SELECT
+			gvkey,
+			iid
+		FROM
+			comp_global_daily.g_security
+		WHERE
+			exchg = ANY (ARRAY [104,132, 171, 151, 192, 194, 201, 209, 256, 286])
+			AND ibtic IS NOT NULL) AS security_eu
+WHERE
+	datadate >= '2001-01-01'::date
+	AND security_fundamental.gvkey = security_eu.gvkey
+ORDER BY
+	datadate;
+```
+
+## Estimate Data
+
+It is also possible to include the estimates made by analysts to improve the model performance. The surprise summary data can be queried using the following code: 
+
+```sql
+SELECT
+    *
+FROM
+    ibes.surpsum AS surprise,
+    (
+        SELECT
+            *
+        FROM
+            comp_global_daily.g_security
+        WHERE
+            exchg = ANY (ARRAY [104,132, 171, 151, 192, 194, 201, 209, 256, 286])
+            AND ibtic IS NOT NULL) AS security_eu
+WHERE
+    surprise.ticker = security_eu.ibtic
+    AND surprise.anndats >= '2001-01-01'::date
+ORDER BY
+    surprise.anndats;
+```
