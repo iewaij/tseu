@@ -1,8 +1,8 @@
 # Trading Strategies on the European Stock Market
 
-## Market Data
+## Data Source
 
-## pandas-datareader 
+### pandas-datareader 
 
 `pandas_datareader` is a python package to download data from multiple sources, e.g. yahoo finance, Eurostat and OECD. As the package's name suggests, the data will be directly pulled into a pandas dataframe. The documentation for this package is limited, therefore you might need use `shift + tab` in jupyter notebooks or dig into [the source code](https://github.com/pydata/pandas-datareader) to understand the available parameters.
 
@@ -55,13 +55,13 @@ def get_data(symbols, start="1/1/2001", end=date.today()):
 get_data("BMW.DE")
 ```
 
-## WRDS
-Wharton Research Data Services (WRDS) provides rich amount of data and fruitful tutorials. We will count on WRDS to pull security price, fundamental, and analyst data.
+### WRDS
+Wharton Research Data Services (WRDS) is online platform that provides access to analytics and historical financial and accounting data for corporations and banks, historical economic data, and tutorials on how to access them. We will count on WRDS to pull security price, fundamental, and analyst data.
 
-After finishing [initial setup](https://wrds-www.wharton.upenn.edu/pages/support/programming-wrds/programming-python/python-from-your-computer/#initial-setup-the-pgpass-file), you can create a new connection by using the following code:
+After finishing [initial setup](https://wrds-www.wharton.upenn.edu/pages/support/programming-wrds/programming-python/python-from-your-computer/#initial-setup-the-pgpass-file), you can initialize a new connection by using the following code:
 
 ```python
-db = wrds.Connection(wrds_username='iewaij')
+db = wrds.Connection(wrds_username='WRDS_USERNAME')
 ```
 
 You can use this connection object (`db`) to query WRDS database. You can find company specific code using [WRDS company code lookup](https://wrds-web.wharton.upenn.edu/wrds/code_search/). Note that the most standard identifiers, such as companies’ tickers and CUSIPs, tend to change over time. Therefore, using GVKEY (Global Company Key) which is a unique number assigned to each company in the Compustat-Capital IQ database is always prefered. To pull the company information of BMW, you can query against [Compustat Global Daily](https://wrds-www.wharton.upenn.edu/data-dictionary/comp_global_daily/) library:
@@ -71,48 +71,133 @@ db.raw_sql(
     """
     SELECT *
     FROM comp_global_daily.g_company
-    WHERE gvkey = '100022'
+    WHERE gvkey = '100022';
     """)
 ```
+
+Or directly pull the table:
+
 
 The following code queries against the daily prices of BMW since 1/1/2001. Note that the adjusted price is PRICE/AJEXDI and you need to adjust that manually: 
 
 ```python
 db.raw_sql(
     """
-    SELECT datadate as date, prchd as high, prcld as low, prcod as open, prccd as close, cshtrd as volume, ajexdi 
+    SELECT datadate, prchd, prcld, prcod, prccd, cshtrd, ajexdi 
     FROM comp_global_daily.g_sec_dprc
     WHERE datadate >= '2001-01-01'::date
     AND gvkey = '100022'
     AND iid = '01W'
-    ORDER BY date
+    ORDER BY date;
     """,
     date_cols=["datadate"])
-
 ```
 
-You should always disconnect using `close()` when you exit your Python environment
+Always disconnect using `close()` when you exit your Python environment
 or complete your data query download step and want to move onto another:
 
 ```python
 db.close()
 ```
 
-Or you can use `with` statement which automatically closes the connection when the query is finished:
+You can also use `with` statement which automatically closes the connection when the query is finished:
 
 ```python
 def get_data_wrds():
-    with wrds.Connection(wrds_username="iewaij") as db:
+    with wrds.Connection(wrds_username="WRDS_USERNAME") as db:
         data = db.raw_sql(
             """
-            SELECT datadate as date, prchd as high, prcld as low, prcod as open, prccd as close, cshtrd as volume, ajexdi 
+            SELECT datadate, prchd, prcld, prcod, prccd, cshtrd, ajexdi 
             FROM comp_global_daily.g_sec_dprc
             WHERE datadate >= '2001-01-01'::date
             AND gvkey = '100022'
             AND iid = '01W'
-            ORDER BY date
+            ORDER BY date;
             """,
             date_cols=["datadate"],
         )
     return data
 ```
+## Exchange
+We will limit our scope to major reference European exchanges. Here are their codes in WRDS:
+
+| exchg |        exchgdesc        |
+| :---: | :---------------------: |
+|  104  | NYSE Euronext Amsterdam |
+|  132  | NYSE Euronext Brussels  |
+|  171  |          XETRA          |
+|  151  |     Swiss Exchange      |
+|  192  |  NYSE Euronext Lisbon   |
+|  194  |  London Stock Exchange  |
+|  201  |     Bolsa De Madrid     |
+|  209  |     Borsa Italiana      |
+|  256  |    NASDAQ OMX Nordic    |
+|  286  |   NYSE Euronext Paris   |
+
+If you are looking for other exchanges' codes, run the following queries:
+
+```sql
+SELECT
+	*
+FROM
+	comp_global_daily.r_ex_codes;
+```
+
+To look up companies' listed stock on major European exchanges, run the following querry:
+
+```sql
+SELECT
+	*
+FROM
+	comp_global_daily.g_security
+WHERE exchg = ANY (ARRAY[104,132, 171, 151, 192, 194, 201, 209, 256, 286]);
+```
+
+Global companies like BMW list their shares on multiple exchanges. We want to find the reference listing which also has available data on IBES. To find European company's stock issues which has IBES links, run the following query:
+
+```sql
+SELECT
+	*
+FROM
+	comp_global_daily.g_security
+WHERE
+	exchg = ANY (ARRAY[104,132, 171, 151, 192, 194, 201, 209, 256, 286])
+	AND ibtic IS NOT NULL;
+```
+
+Using the query as sub-query, we can find the daily stock prices for companies on major European exchanges.
+
+```sql
+SELECT
+	datadate,
+	security_price.gvkey,
+	security_price.iid,
+	curcdd,
+	prcod,
+	prchd,
+	prcld,
+	prccd,
+	cshtrd,
+	ajexdi
+FROM
+	comp_global_daily.g_secd AS security_price,
+	(
+		SELECT
+			gvkey,
+			iid
+		FROM
+			comp_global_daily.g_security
+		WHERE
+			exchg = ANY (ARRAY [104,132, 171, 151, 192, 194, 201, 209, 256, 286])
+			AND ibtic IS NOT NULL) AS security_eu
+WHERE
+	datadate >= '2001-01-01'::date
+	AND security_price.gvkey = security_eu.gvkey
+	AND security_price.iid = security_eu.iid
+ORDER BY
+	datadate;
+```
+
+## Fundamental Data
+
+## Analyst Data
