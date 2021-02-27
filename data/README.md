@@ -247,28 +247,120 @@ ORDER BY
 
 ## Fundamentals
 
-Fundamenatal data is available on WRDS as a table called `g_fundq`. The columns' definition can be found [here](https://wrds-www.wharton.upenn.edu/data-dictionary/comp_global_daily/g_fundq/). The following code queries fundamental data of companies on major European exchanges:
+Fundamenatal data is available on WRDS as a table called `g_fundq`. The columns' definition can be found [here](https://wrds-www.wharton.upenn.edu/data-dictionary/comp_global_daily/g_fundq/). The following code queries yearly fundamental data of Siemens AG in 2005:
 
 ```sql
 SELECT
-	*
+    datadate,
+    conm,
+    -- currency code
+    curcd,
+    -- current assets
+    act,
+    -- cash and cash qquivalents at end of year
+    chee,
+    -- short-term investments
+    ivst,
+    -- cash and short-term investments, che = chee + ivst
+    che,
+    -- net accounts receivable
+    coalesce(rectr, rectrfs) AS rectr,
+    -- other current receivables
+    coalesce(recco, reccofs) AS recco,
+    -- total receivables, rect = rectr + recco
+    coalesce(rect, artfs) AS rect,
+    -- inventories
+    invt,
+    -- other current assets
+    coalesce(aco, acox, acofs, acoxfs) AS aco,
+    -- total current assets
+    act,
+    -- net property, plant and equipment
+    ppent,
+    -- 	total intangible assets
+    intan,
+    -- other assets
+    ao,
+    -- total assets
+    at,
+    -- accounts payable
+    ap,
+    -- total current debt
+    dlc,
+    -- total current liabilities
+    lct,
+    -- long-term debt
+    dltt,
+    -- total liabilities
+    lt,
+    -- common stock
+    cstk,
+    -- retained earnings, sometimes 0, need to be adjusted
+    re,
+    -- total common equity
+    ceq,
+    -- total equity
+    coalesce(teq, lse - lt) AS teq,
+    -- total liabilities and equity
+    lse,
+    -- total debt
+    dlc + dltt AS total_debt,
+    -- net debt
+    dlc + dltt - che AS net_debt,
+    -- working capital
+    wcap,
+    -- revenue
+    revt,
+    -- costs of goods sold
+    cogs,
+    -- research and development expense
+    xrd,
+    -- interests expense
+    xint,
+    -- income tax
+    txt,
+    -- net income from continuing operations
+    nicon,
+    -- net income from extraordinary items and discontinued operations
+    xido,
+    -- net income
+    nicon + xido as net_income,
+    -- ebit
+    ebit,
+    -- ebitda
+    ebitda,
+    -- eps excluding extraordinary items
+    epsexcon,
+    -- eps including extraordinary items
+    epsincon,
+    -- Invested capital, icapt = teq + dltt
+    icapt,
+    -- cash from operations from continuing and discontinued operations
+    oancf,
+    -- CAPEX
+    capx
 FROM
-	comp_global_daily.g_fundq AS security_fundamental,
-	(
-		SELECT
-			gvkey,
-			iid
-		FROM
-			comp_global_daily.g_security
-		WHERE
-			exchg = ANY (ARRAY [104,132, 171, 151, 192, 194, 201, 209, 256, 286])
-			AND ibtic IS NOT NULL) AS security_eu
+    comp_global_daily.g_funda
 WHERE
-	datadate >= '2001-01-01'::date
-	AND security_fundamental.gvkey = security_eu.gvkey
-ORDER BY
-	datadate;
+    gvkey = '019349'
+    AND datadate = '2005-09-30'::date;
 ```
+
+| Ratio                              | Definition                                       |
+| ---------------------------------- | ------------------------------------------------ |
+| Current Ratio                      | Current Assets/Current Liabilities               |
+| Quick Ratio                        | (Current Assets – Inventory)/Current Liabilities |
+| Gross Profit Margin                | Gross Profit/Sales                               |
+| Net profit margin                  | Net Profit After Taxes/Sales                     |
+| Return on Assets                   | Net Profit After Taxes/Total Assets              |
+| Return on equity                   | Net Profit After Taxes/Shareholders’ Equity      |
+| Accounts Receivable Turnover Ratio | Sales/Accounts Receivables                       |
+| Inventory Turnover Ratio           | Cost of Goods Sold/Inventory                     |
+| Fixed Assets Turnover Ratio        | Sales/Fixed Assets                               |
+| Total Asset Turnover Ratio         | Sales/Total Assets                               |
+| Times INterest Earned              | Interest Expense/EBITDA                          |
+| Debt Equity Ratio                  | Long-Term Debt/Shareholders Equity               |
+| Debt Ratio                         | Lont-Term Debt/Total Assets                      |
 
 ## Estimates
 
