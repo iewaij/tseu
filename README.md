@@ -13,7 +13,7 @@ Data is extracted from Compustat and IBES via WRDS. For more information, go to 
 ## Literature
 ### Asset Pricing with Machine Learning
 [Empirical Asset Pricing via Machine Learning](https://academic.oup.com/rfs/article/33/5/2223/5758276)  
-[Does it pay to follow anomalies research? Machine learning approach with international evidence](https://www.sciencedirect.com/science/article/abs/pii/S1386418120300574)
+[Does It Pay to Follow Anomalies Research? Machine Learning Approach with International Evidence](https://www.sciencedirect.com/science/article/abs/pii/S1386418120300574)  
 [Asset Pricing](https://www.johnhcochrane.com/asset-pricing)  
 [Replicating Anomalies](https://academic.oup.com/rfs/article-abstract/33/5/2019/5236964)  
 [Tree-Based Conditional Portfolio Sorts: The Relation between Past and Future Stock Returns](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2740751)
