@@ -55,6 +55,11 @@ def get_data(symbols, start="1/1/2001", end=date.today()):
 get_data("BMW.DE")
 ```
 
+
+
+
+
+
 ## WRDS
 Wharton Research Data Services (WRDS) provides rich amount of data and fruitful tutorials. We will count on WRDS to pull security price, fundamental, and analyst data.
 
