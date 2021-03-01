@@ -9,6 +9,7 @@
   - [Exchange](#exchange)
   - [Fundamentals](#fundamentals)
   - [Estimates](#estimates)
+  - [Currenct Exchange Rates](#currenct-exchange-rates)
 
 ## Source
 
@@ -175,19 +176,26 @@ ORDER BY
 ```
 
 ## Exchange
-We will limit our scope to major reference European exchanges. Here are their codes in WRDS:
+We will limit our scope to [major European exchanges](https://fese.eu/app/uploads/2020/07/European-Exchange-Report-2019_Final.pdf) in Austria, Belgium, Denmark, Finland, France, Germany, Greece, Ireland, Italy, Luxembourg, the Netherlands, Norway, Portugal, Spain, Sweden, Switzerland and the United Kingdom. Here are their codes in WRDS:
 
 | exchg |        exchgdesc        |
 | :---: | :---------------------: |
 |  104  | NYSE Euronext Amsterdam |
+|  107  |  Athens Stock Exchange  |
 |  132  | NYSE Euronext Brussels  |
-|  171  |          XETRA          |
 |  151  |     Swiss Exchange      |
+|  154  |   Deutsche Boerse AG    |
+|  171  |          XETRA          |
+|  172  |  Irish Stock Exchange   |
 |  192  |  NYSE Euronext Lisbon   |
 |  194  |  London Stock Exchange  |
 |  201  |     Bolsa De Madrid     |
 |  209  |     Borsa Italiana      |
+|  228  |      Oslo Bors ASA      |
 |  256  |    NASDAQ OMX Nordic    |
+|  257  |    Boerse Stuttgart     |
+|  273  |      Wiener Börse       |
+|  276  |  Warsaw Stock Exchange  |
 |  286  |   NYSE Euronext Paris   |
 
 If you are looking for other exchanges' codes, run the following queries:
@@ -199,17 +207,22 @@ FROM
 	comp_global_daily.r_ex_codes;
 ```
 
-We can exlude London Stock Exchange, Swiss Exchange and NASDAQ Nordic which do not use EUR. To look up companies' listed stock on major European exchanges using EUR, run the following querry:
+To look up companies' listed stock on major European exchanges using EUR, run the following querry:
 
 ```sql
 SELECT
-	*
+    sec.gvkey,
+    sec.iid,
+    excntry
 FROM
-	comp_global_daily.g_security
-WHERE exchg = ANY (ARRAY[104, 132, 171, 192, 201, 209, 286]);
+    comp_global_daily.g_security AS sec
+    JOIN comp_global_daily.g_funda AS fund ON sec.gvkey = fund.gvkey
+        AND sec.iid = fund.iid
+WHERE
+    sec.exchg = ANY (ARRAY [104, 107, 132, 151, 154, 171, 192, 194, 201, 209, 256, 257, 273, 276, 286]);
 ```
 
-Global companies like BMW list their shares on multiple exchanges. We want to find the reference listing which also has available data on IBES. To find European company's stock issues which has IBES links, run the following query:
+Global companies like BMW list their shares on multiple exchanges. We want to find the reference listing which also has available fundamental data. To find European company's stock issues which links to their fundamental data, run the following query:
 
 ```sql
 SELECT
@@ -346,22 +359,6 @@ WHERE
     AND datadate = '2005-09-30'::date;
 ```
 
-| Ratio                              | Definition                                       |
-| ---------------------------------- | ------------------------------------------------ |
-| Current Ratio                      | Current Assets/Current Liabilities               |
-| Quick Ratio                        | (Current Assets – Inventory)/Current Liabilities |
-| Gross Profit Margin                | Gross Profit/Sales                               |
-| Net profit margin                  | Net Profit After Taxes/Sales                     |
-| Return on Assets                   | Net Profit After Taxes/Total Assets              |
-| Return on equity                   | Net Profit After Taxes/Shareholders’ Equity      |
-| Accounts Receivable Turnover Ratio | Sales/Accounts Receivables                       |
-| Inventory Turnover Ratio           | Cost of Goods Sold/Inventory                     |
-| Fixed Assets Turnover Ratio        | Sales/Fixed Assets                               |
-| Total Asset Turnover Ratio         | Sales/Total Assets                               |
-| Times INterest Earned              | Interest Expense/EBITDA                          |
-| Debt Equity Ratio                  | Long-Term Debt/Shareholders Equity               |
-| Debt Ratio                         | Lont-Term Debt/Total Assets                      |
-
 ## Estimates
 
 It is also possible to include the estimates made by analysts to improve the model performance. The surprise summary data can be queried using the following code: 
@@ -384,4 +381,30 @@ WHERE
     AND surprise.anndats >= '2001-01-01'::date
 ORDER BY
     surprise.anndats;
+```
+
+## Currenct Exchange Rates
+```sql
+SELECT
+    curr.datadate,
+    curr. tocurd,
+    curr.exratd / eur.exratd AS exratd
+FROM (
+    SELECT
+        datadate,
+        tocurd,
+        exratd
+    FROM
+        comp.g_exrt_dly
+    WHERE
+        tocurd = ANY (ARRAY ['ATS', 'AUD', 'BBD', 'BEF', 'BWP', 'CAD', 'CHF', 'CNY', 'CZK', 'DEM', 'DKK', 'EEK', 'EGP', 'ESP', 'FIM', 'FRF', 'GBP', 'GEL', 'GRD', 'HKD', 'HUF', 'IEP', 'ILS', 'INR', 'ISK', 'ITL', 'JPY', 'LTL', 'MXN', 'MYR', 'NLG', 'NOK', 'NZD', 'PGK', 'PLN', 'PTE', 'RUB', 'SAR', 'SEK', 'SGD', 'SKK', 'TRY', 'UAH', 'USD', 'XAF', 'XOF', 'ZAR', 'ZMK', 'ZMW'])) AS curr
+    JOIN (
+        SELECT
+            datadate, exratd
+        FROM
+            comp.g_exrt_dly
+        WHERE
+            tocurd = 'EUR') AS eur ON curr.datadate = eur.datadate
+ORDER BY
+    curr.datadate;
 ```
