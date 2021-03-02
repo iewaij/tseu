@@ -176,12 +176,11 @@ ORDER BY
 ```
 
 ## Exchange
-We will limit our scope to [major European exchanges](https://fese.eu/app/uploads/2020/07/European-Exchange-Report-2019_Final.pdf) in Austria, Belgium, Denmark, Finland, France, Germany, Greece, Ireland, Italy, Luxembourg, the Netherlands, Norway, Portugal, Spain, Sweden, Switzerland and the United Kingdom. Here are their codes in WRDS:
+We will limit our scope to [major European exchanges](https://fese.eu/app/uploads/2020/07/European-Exchange-Report-2019_Final.pdf) in Austria, Belgium, Denmark, Finland, France, Germany, Ireland, Italy, Luxembourg, the Netherlands, Norway, Portugal, Spain, Sweden, Switzerland and the United Kingdom. Here are their codes in WRDS:
 
 | exchg |        exchgdesc        |
 | :---: | :---------------------: |
 |  104  | NYSE Euronext Amsterdam |
-|  107  |  Athens Stock Exchange  |
 |  132  | NYSE Euronext Brussels  |
 |  151  |     Swiss Exchange      |
 |  154  |   Deutsche Boerse AG    |
@@ -195,7 +194,6 @@ We will limit our scope to [major European exchanges](https://fese.eu/app/upload
 |  256  |    NASDAQ OMX Nordic    |
 |  257  |    Boerse Stuttgart     |
 |  273  |      Wiener Börse       |
-|  276  |  Warsaw Stock Exchange  |
 |  286  |   NYSE Euronext Paris   |
 
 If you are looking for other exchanges' codes, run the following queries:
@@ -234,28 +232,31 @@ WHERE
 	AND ibtic IS NOT NULL;
 ```
 
-Using the above query as sub-query, we can find the daily stock prices for companies on major European exchanges using EUR:
+Using the query below, we can find the daily stock prices for companies on major European exchanges using EUR:
 
 ```sql
 SELECT
-    *
+    datadate,
+    price.gvkey,
+    curcdd,
+    prcod / ajexdi AS prcod,
+    prchd / ajexdi AS prchd,
+    prcld / ajexdi AS prcld,
+    prccd / ajexdi AS prccd,
+    cshtrd
 FROM
-	comp_global_daily.g_sec_dprc AS price,
-	(
-		SELECT
-			gvkey,
-			iid
-		FROM
-			comp_global_daily.g_security
-		WHERE
-			exchg = ANY (ARRAY [104,132, 171, 192, 201, 209, 286])
-			AND ibtic IS NOT NULL) AS eu
+    comp_global_daily.g_secd AS price,
+    ( SELECT DISTINCT
+            gvkey,
+            iid
+        FROM
+            comp_global_daily.g_funda) AS eu
 WHERE
-	datadate >= '2001-01-01'::date
-	AND price.gvkey = eu.gvkey
-	AND price.iid = eu.iid
-ORDER BY
-	datadate;
+    datadate >= '2000-01-01'::date
+    AND exchg = ANY (ARRAY [104, 132, 151, 154, 171, 172, 192, 194, 201, 209, 228, 256, 257, 273, 286])
+    AND price.cshtrd IS NOT NULL
+    AND price.gvkey = eu.gvkey
+    AND price.iid = eu.iid;
 ```
 
 ## Fundamentals
@@ -387,7 +388,7 @@ ORDER BY
 ```sql
 SELECT
     curr.datadate,
-    curr. tocurd,
+    curr.tocurd,
     curr.exratd / eur.exratd AS exratd
 FROM (
     SELECT
@@ -404,7 +405,5 @@ FROM (
         FROM
             comp.g_exrt_dly
         WHERE
-            tocurd = 'EUR') AS eur ON curr.datadate = eur.datadate
-ORDER BY
-    curr.datadate;
+            tocurd = 'EUR') AS eur ON curr.datadate = eur.datadate;
 ```
