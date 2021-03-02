@@ -2,15 +2,23 @@
 
 - [Trading Strategies on the European Stock Market](#trading-strategies-on-the-european-stock-market)
   - [Data](#data)
+  - [Libraries](#libraries)
+    - [Technical Indicators](#technical-indicators)
   - [References](#references)
     - [Mispricing Strategy with Machine Learning](#mispricing-strategy-with-machine-learning)
     - [Asset Pricing and Market Anomolies](#asset-pricing-and-market-anomolies)
-    - [Technical Indicators](#technical-indicators)
+    - [Technical Indicators](#technical-indicators-1)
     - [Firm Characteristics](#firm-characteristics)
     - [Model Interpretation](#model-interpretation)
 
 ## Data
 Data is extracted from Compustat and IBES via WRDS. For more information, go to [data](/data).
+
+## Libraries
+### Technical Indicators
+[TA-Lib](https://github.com/mrjbq7/ta-lib)  
+[FinTA](https://github.com/peerchemist/finta)
+[ta](https://github.com/bukosabino/ta)
 
 ## References
 ### Mispricing Strategy with Machine Learning
