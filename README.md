@@ -17,7 +17,7 @@ Data is extracted from Compustat and IBES via WRDS. For more information, go to 
 ## Libraries
 ### Technical Indicators
 [TA-Lib](https://github.com/mrjbq7/ta-lib)  
-[FinTA](https://github.com/peerchemist/finta)
+[FinTA](https://github.com/peerchemist/finta)  
 [ta](https://github.com/bukosabino/ta)
 
 ## References
