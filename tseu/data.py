@@ -38,7 +38,8 @@ def get_price_data():
                     AND curcd = 'EUR') AS fund
                 JOIN comp_global_daily.g_sec_dprc AS prc ON fund.gvkey = prc.gvkey AND fund.iid = prc.iid
             WHERE
-                curcdd = 'EUR';
+                curcdd = 'EUR'
+                AND cshtrd IS NOT NULL;
             """
         prc = query_wrds(prc_stmt)
         prc.to_parquet(filename)
@@ -125,7 +126,9 @@ def get_cap_data():
             FROM
                 x;
             """
-        cap = query_wrds(cap_stmt)
+        cap = query_wrds(cap_stmt).drop_duplicates(
+            subset=["date", "gvkey"], keep="last"
+        )
         cap.to_parquet(filename)
     return cap
 
@@ -149,3 +152,11 @@ def get_data():
         .reindex(index)
     )
     return df
+
+
+def be_technical():
+    pass
+
+
+def be_fundamental():
+    pass
