@@ -1,5 +1,6 @@
 import wrds
 import pandas as pd
+from functools import reduce
 from config import Config
 
 config = Config()
@@ -133,13 +134,44 @@ def get_cap_data():
     return cap
 
 
+def build_gvkeys(prc, fund, cap, min_pctl=0.5):
+    gvkeys_prc = prc.gvkey.unique()
+    gvkeys_fund = fund["gvkey"].unique()
+    gvkeys_cap = cap.loc[
+        (cap.mcap_pctl > min_pctl) & (cap.date > start), :
+    ].gvkey.unique()
+    gvkeys = reduce(np.intersect1d, (gvkeys_prc, gvkeys_fund, gvkeys_cap))
+    return gvkeys
+
+
+def build_index(prc, fund, cap, min_pctl=0.5):
+    gvkeys = construct_gvkeys(prc, fund, cap, min_pctl)
+    idx = pd.MultiIndex.from_arrays([[], []], names=["date", "gvkey"])
+    for gvkey in gvkeys:
+        min_date = fund[fund.gvkey == gvkey].date.min()
+        max_date = prc[prc.gvkey == gvkey].date.max()
+        dates = pd.date_range(start=min_date, end=max_date)
+        idx.append(
+            pd.MultiIndex.from_tuples(
+                [(gvkey, date) for date in dates], names=["date", "gvkey"]
+            )
+        )
+    return idx
+
+
+def build_technical():
+    pass
+
+
+def build_fundamental():
+    pass
+
+
 def get_data():
     prc = get_price_data()
     fund = get_fundamental_data()
     cap = get_cap_data()
-    gvkey = prc["gvkey"].unique()
-    dates = pd.date_range(start="2000-01-01", end="2021-02-28")
-    index = pd.MultiIndex.from_product([gvkey, dates], names=["gvkey", "date"])
+    idx = build_index(prc, fund, cap, min_pctl=0.5)
     df = (
         pd.concat(
             [prc, fund, cap],
@@ -149,14 +181,6 @@ def get_data():
             keys=["date", "gvkey"],
         )
         .set_index(["gvkey", "date"])
-        .reindex(index)
+        .reindex(idx)
     )
     return df
-
-
-def be_technical():
-    pass
-
-
-def be_fundamental():
-    pass
