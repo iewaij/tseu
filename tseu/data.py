@@ -87,7 +87,6 @@ def get_fundamental_data():
                 fincf + ivncf + oancf AS cashflow,
                 xrd / NULLIF(revt, 0) AS rd_sales_ratio,
                 xrd / NULLIF(xopr, 0) AS re_opr_exp_ratio,
-                -- Others
                 at AS risk_size
             FROM
                 comp_global_daily.g_funda
@@ -144,21 +143,6 @@ def build_gvkeys(prc, fund, cap, min_pctl=0.5):
     return gvkeys
 
 
-def build_index(prc, fund, cap, min_pctl=0.5):
-    gvkeys = construct_gvkeys(prc, fund, cap, min_pctl)
-    idx = pd.MultiIndex.from_arrays([[], []], names=["date", "gvkey"])
-    for gvkey in gvkeys:
-        min_date = fund[fund.gvkey == gvkey].date.min()
-        max_date = prc[prc.gvkey == gvkey].date.max()
-        dates = pd.date_range(start=min_date, end=max_date)
-        idx.append(
-            pd.MultiIndex.from_tuples(
-                [(gvkey, date) for date in dates], names=["date", "gvkey"]
-            )
-        )
-    return idx
-
-
 def build_technical():
     pass
 
@@ -167,20 +151,35 @@ def build_fundamental():
     pass
 
 
-def get_data():
-    prc = get_price_data()
-    fund = get_fundamental_data()
-    cap = get_cap_data()
-    idx = build_index(prc, fund, cap, min_pctl=0.5)
-    df = (
-        pd.concat(
-            [prc, fund, cap],
-            axis=1,
-            join="outer",
-            ignore_index=True,
-            keys=["date", "gvkey"],
-        )
-        .set_index(["gvkey", "date"])
-        .reindex(idx)
+def build_dataframe(prc, fund, cap, min_pctl=0.5):
+    gvkeys = construct_gvkeys(prc, fund, cap, min_pctl)
+    # update dates and ffill missing values
+    # https://stackoverflow.com/questions/47454219/apply-set-index-over-groupby-object-in-order-to-apply-asfreq-per-group
+    cap = (
+        cap[(cap.mcap_pctl > min_pctl) & (cap.date >= "2000-01-01")]
+        .groupby("gvkey")
+        .apply(lambda x: x.set_index("date").resample("D").ffill())
+        .drop(["gvkey"], axis=1)
     )
+    fund = (
+        fund[fund.gvkey.isin(gvkeys)]
+        .groupby("gvkey")
+        .apply(lambda x: x.set_index("date").resample("D").ffill())
+        .drop(["gvkey"], axis=1)
+    )
+    prc = prc.set_index(["gvkey", "date"])
+    df = pd.concat([cap, fund, prc], join="inner")
+    df.to_parquet(filename)
+    return df
+
+
+def get_data(min_pctl=0.5):
+    filename = config.basedir + "/../data/data.parquet"
+    try:
+        df = pd.read_parquet(filename)
+    except FileNotFoundError:
+        prc = get_price_data()
+        fund = get_fundamental_data()
+        cap = get_cap_data()
+        df = build_dataframe(prc, fund, cap, min_pctl)
     return df
