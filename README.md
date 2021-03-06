@@ -21,7 +21,9 @@ Data is extracted from Compustat and IBES via WRDS. For more information, go to 
 [ta](https://github.com/bukosabino/ta)
 
 ## References
-### Mispricing Strategy with Machine Learning
+### Factor Investing with Machine Learning
+[Machine Learning for Factor Investing](http://www.mlfactor.com/)  
+[Machine Learning in Asset Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3420952)
 [Empirical Asset Pricing via Machine Learning](https://academic.oup.com/rfs/article/33/5/2223/5758276)  
 [Does It Pay to Follow Anomalies Research? Machine Learning Approach with International Evidence](https://www.sciencedirect.com/science/article/abs/pii/S1386418120300574)  
 [Tree-Based Conditional Portfolio Sorts: The Relation between Past and Future Stock Returns](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2740751)
@@ -38,5 +40,6 @@ Data is extracted from Compustat and IBES via WRDS. For more information, go to 
 [The Characteristics that Provide Independent Information about Average U.S. Monthly Stock Returns](https://academic.oup.com/rfs/article-abstract/30/12/4389/3091648)  
 [Firm Characteristics and Expected Stock Returns](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3185335)  
 
-### Model Interpretation
-[A Unified Approach to Interpreting Model Predictions](https://proceedings.neurips.cc/paper/2017/file/8a20a8621978632d76c43dfd28b67767-Paper.pdf)
+### Model Interpretation and Feature Selection
+[A Unified Approach to Interpreting Model Predictions](https://proceedings.neurips.cc/paper/2017/file/8a20a8621978632d76c43dfd28b67767-Paper.pdf)  
+[The Best Way to Select Features?](https://arxiv.org/abs/2005.12483)
