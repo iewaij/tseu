@@ -1,6 +1,8 @@
 import wrds
 import pandas as pd
-from functools import reduce
+import numpy as np
+from pandas.tseries.offsets import DateOffset
+from build import build_frame
 from config import Config
 
 config = Config()
@@ -15,169 +17,108 @@ def query_wrds(sql_stmt):
     return data
 
 
-def get_price_data():
-    filename = config.basedir + "/../data/prc.parquet"
+def query_sql(sql_path):
+    with open(sql_path) as sql:
+        sql_stmt = sql.read()
+    data = query_wrds(sql_stmt)
+    return data
+
+
+def query_price():
+    prc_sql = config.prc_sql
+    prc = query_sql(prc_sql)
+    return prc
+
+
+def query_fundamental():
+    fund_sql = config.fund_sql
+    fund = query_sql(fund_sql).astype(
+        {"gvkey": "object", "country": "category", "industry": "category"}
+    )
+    return fund
+
+
+def query_market_cap():
+    cap_sql = config.cap_sql
+    cap = query_sql(cap_sql)
+    return cap
+
+
+def query_price_target():
+    prctg_sql = config.prctg_sql
+    prctg = query_sql(prctg_sql)
+    return prctg
+
+
+def query_surprise():
+    surp_sql = config.surp_sql
+    surp = query_sql(surp_sql)
+    return surp
+
+
+def get_price():
+    filename = config.prc_parquet
     try:
         prc = pd.read_parquet(filename)
     except FileNotFoundError:
-        prc_stmt = """
-            SELECT
-                prc.datadate AS date,
-                prc.gvkey,
-                prcod / ajexdi AS open,
-                prchd / ajexdi AS high,
-                prcld / ajexdi AS low,
-                prccd / ajexdi AS close,
-                cshtrd AS volume
-            FROM ( SELECT DISTINCT
-                    gvkey,
-                    iid
-                FROM
-                    comp_global_daily.g_funda
-                WHERE
-                    exchg = ANY (ARRAY [104, 132, 151, 154, 171, 172, 192, 194, 201, 209, 228, 256, 257, 273, 286])
-                    AND curcd = 'EUR') AS fund
-                JOIN comp_global_daily.g_sec_dprc AS prc ON fund.gvkey = prc.gvkey AND fund.iid = prc.iid
-            WHERE
-                curcdd = 'EUR'
-                AND cshtrd IS NOT NULL;
-            """
-        prc = query_wrds(prc_stmt)
+        prc = query_price()
         prc.to_parquet(filename)
     return prc
 
 
-def get_fundamental_data():
-    filename = config.basedir + "/../data/fund.parquet"
+def get_fundamental():
+    filename = config.fund_parquet
     try:
         fund = pd.read_parquet(filename)
     except FileNotFoundError:
-        fund_stmt = """
-            datadate AS date,
-            gvkey,
-            at AS total_asset,
-            act / NULLIF(lct, 0) AS current_ratio,
-            (act - invt) / NULLIF(lct, 0) AS quick_ratio,
-            chee / NULLIF(lct, 0) AS cash_ratio,
-            oancf / NULLIF(lct, 0) AS opr_cashflow_ratio,
-            capx / oancf AS capx_cashflow_ratio,
-            (dlc + dltt) / NULLIF(ceq, 0) AS debt_equity_ratio,
-            (dltt + dlc) / NULLIF(at, 0) debt_asset_ratio,
-            at / NULLIF(ceq, 0) AS fin_leverage,
-            (dltt + dlc) / NULLIF(ebitda, 0) AS debt_ebitda_ratio,
-            (dltt + dlc - chee) / NULLIF(ebitda, 0) AS net_debt_ebitda_ratio,
-            ebit / NULLIF(xint, 0) AS ebit_int_coverage_ratio,
-            ebitda / NULLIF(xint, 0) AS ebitda_int_coverage_ratio,
-            ch / xint AS cash_coverage_ratio,
-            (dltt + dlc) / NULLIF(dltt + dlc + teq, 0) AS debt_total_cap_ratio,
-            oancf / (dlc + dltt) AS cashflow_debt_ratio,
-            cogs / NULLIF(invt, 0) AS invt_turnover,
-            cogs / NULLIF(ap, 0) AS accounts_payable_turnover,
-            revt / COALESCE(rect, artfs) AS rec_turnover,
-            365 * invt / cogs AS days_sales_invt,
-            365 * ap / cogs AS days_sales_payable,
-            365 * COALESCE(rect, artfs) / revt AS days_sales_receivable,
-            revt / NULLIF(ppent, 0) AS fixed_asset_turnover,
-            revt / NULLIF(at, 0) AS total_asset_turnover,
-            (revt - cogs) / NULLIF(revt, 0) AS gross_profit_margin,
-            ebitda / NULLIF(revt, 0) AS ebitda_margin,
-            ebit / NULLIF(revt, 0) AS ebit_margin,
-            pi / NULLIF(revt, 0) AS pre_tax_margin,
-            nicon / NULLIF(revt, 0) AS net_profit_margin,
-            nicon / NULLIF(at, 0) AS roa,
-            nicon / NULLIF(ceq, 0) AS roe,
-            COALESCE((ebit * (nicon / pi)) / (dlc + dltt + teq), ebit * (1 - txt / NULLIF(pi, 0)) / NULLIF(icapt, 0)) AS roic,
-            COALESCE(epsexcon, nicon/NULLIF(cshpria, 0)) AS eps,
-            COALESCE(epsincon, (nicon + xido)/NULLIF(cshpria, 0))  AS eps_inextra,
-            fincf + ivncf + oancf AS cashflow,
-            xrd / NULLIF(revt, 0) AS rd_sales_ratio
-            """
-        fund = query_wrds(fund_stmt)
+        fund = query_fundamental()
         fund.to_parquet(filename)
     return fund
 
 
-def get_cap_data():
-    filename = config.basedir + "/../data/cap.parquet"
+def get_market_cap():
+    filename = config.cap_parquet
     try:
         cap = pd.read_parquet(filename)
     except FileNotFoundError:
-        cap_stmt = """
-            WITH x AS (
-                SELECT
-                    CAST(date_trunc('month',
-                            datadate::date) + interval '1 month' AS date) AS date,
-                    gvkey,
-                    iid,
-                    COALESCE(cshoc,
-                        0) * prccd AS mcap
-                FROM
-                    comp_global_daily.g_secd
-                WHERE
-                    datadate >= '2000-01-01'::date
-                    AND curcdd = 'EUR'
-                    AND monthend = 1
-                    AND exchg = ANY (ARRAY [104, 132, 151, 154, 171, 172, 192, 194, 201, 209, 228, 256, 257, 273, 286])
-            )
-            SELECT
-                date, gvkey, mcap, PERCENT_RANK() OVER (PARTITION BY date ORDER BY mcap) AS mcap_pctl
-            FROM
-                x;
-            """
-        cap = query_wrds(cap_stmt).drop_duplicates(
-            subset=["date", "gvkey"], keep="last"
-        )
+        cap = query_market_cap()
         cap.to_parquet(filename)
     return cap
 
 
-def build_gvkeys(prc, fund, cap, min_pctl=0.5):
-    gvkeys_prc = prc.gvkey.unique()
-    gvkeys_fund = fund["gvkey"].unique()
-    gvkeys_cap = cap.loc[
-        (cap.mcap_pctl > min_pctl) & (cap.date > start), :
-    ].gvkey.unique()
-    gvkeys = reduce(np.intersect1d, (gvkeys_prc, gvkeys_fund, gvkeys_cap))
-    return gvkeys
+def get_price_target():
+    filename = config.prctgt_parquet
+    try:
+        prctgt = pd.read_parquet(filename)
+    except FileNotFoundError:
+        prctgt = query_price_target()
+        prctgt.to_parquet(filename)
+    return prctgt
 
 
-def build_technical():
-    pass
+def get_surprise():
+    filename = config.surp_parquet
+    try:
+        surp = pd.read_parquet(filename)
+    except FileNotFoundError:
+        surp = query_surprise()
+        surp.to_parquet(filename)
+    return surp
 
 
-def build_fundamental():
-    pass
-
-
-def build_dataframe(prc, fund, cap, min_pctl=0.5):
-    gvkeys = construct_gvkeys(prc, fund, cap, min_pctl)
-    # update dates and ffill missing values
-    # https://stackoverflow.com/questions/47454219/apply-set-index-over-groupby-object-in-order-to-apply-asfreq-per-group
-    cap = (
-        cap[(cap.mcap_pctl > min_pctl) & (cap.date >= "2000-01-01")]
-        .groupby("gvkey")
-        .apply(lambda x: x.set_index("date").resample("D").ffill())
-        .drop(["gvkey"], axis=1)
-    )
-    fund = (
-        fund[fund.gvkey.isin(gvkeys)]
-        .groupby("gvkey")
-        .apply(lambda x: x.set_index("date").resample("D").ffill())
-        .drop(["gvkey"], axis=1)
-    )
-    prc = prc.set_index(["gvkey", "date"])
-    df = pd.concat([cap, fund, prc], join="inner")
-    df.to_parquet(filename)
-    return df
+def build_data(min_pctl):
+    prc = get_price()
+    fund = get_fundamental()
+    cap = get_market_cap()
+    data = build_frame(prc, fund, cap, min_pctl)
+    return data
 
 
 def get_data(min_pctl=0.5):
-    filename = config.basedir + "/../data/data.parquet"
+    filename = config.data_parquet
     try:
-        df = pd.read_parquet(filename)
+        data = pd.read_parquet(filename)
     except FileNotFoundError:
-        prc = get_price_data()
-        fund = get_fundamental_data()
-        cap = get_cap_data()
-        df = build_dataframe(prc, fund, cap, min_pctl)
-    return df
+        data = build_data()
+        data.to_parquet(filename)
+    return data
