@@ -4,10 +4,16 @@ from pandas.tseries.offsets import DateOffset
 
 
 def frame_to_signals(X, estimator):
-    short_array = -1 * estimator.predict_proba(X)[:, 0]
-    long_array = estimator.predict_proba(X)[:, -1]
+    try:
+        short_array = -1 * estimator.predict_proba(X)[:, 0]
+        long_array = estimator.predict_proba(X)[:, -1]
+    except AttributeError:
+        short_array = estimator.predict(X)
+        long_array = estimator.predict(X)
     short_signal = pd.Series(short_array, X.index)
+    short_signal = short_signal.where(short_signal < 0, 0)
     long_signal = pd.Series(long_array, X.index)
+    long_signal = long_signal.where(long_signal > 0, 0)
     return short_signal, long_signal
 
 
@@ -77,6 +83,7 @@ def position_to_margin(data, position, tx=-0.001, method="log"):
 
 
 def sharpe_ratio(margin):
+    margin = margin[margin != 0]
     return margin.mean() / margin.std() * np.sqrt(252)
 
 

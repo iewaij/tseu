@@ -55,6 +55,8 @@ def build_labels(universe, months=3, relative=True):
 
     if relative:
         y = log_ret.groupby("date").transform(lambda x: (x - x.median()))
+    else:
+        y = log_ret
 
     return y
 
@@ -101,5 +103,8 @@ def build_train_test(
     elif method == "multi":
         y_test = to_multi_lables(y_test, thres)
         y_train = to_multi_lables(y_train, thres)
-
+    elif method == "regression":
+        pass
+    else:
+        raise NameError("The method doesn't exist.")
     return X_train, y_train, X_test, y_test
