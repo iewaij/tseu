@@ -56,13 +56,8 @@ def signals_to_positions(short_signal, long_signal, months=3, n=10, weight="equa
 
 
 def position_to_margin(data, position, tx=-0.001, method="log"):
-    merged = pd.merge(
-        position.rename("position"),
-        data.close,
-        how="left",
-        left_index=True,
-        right_index=True,
-    )
+    position = position.rename("position").to_frame()
+    merged = position.join(data)
     merged["close"] = merged.close.groupby("gvkey").fillna(method="ffill")
     merged["tx"] = np.where(position.shift(1) != position, tx, 0)
 
@@ -82,6 +77,15 @@ def position_to_margin(data, position, tx=-0.001, method="log"):
     return margin
 
 
+def idx_margin(data, margin, idx="DAX", method="log"):
+    idx_close = data.loc[idx].reindex(margin.index, method="ffill").close
+    if method == "log":
+        idx_margin = np.log(idx_close / idx_close.shift(1))
+    elif method == "percent":
+        idx_margin = idx_close.pct_change(1)
+    return idx_margin.fillna(0)
+
+
 def sharpe_ratio(margin):
     margin = margin[margin != 0]
     return margin.mean() / margin.std() * np.sqrt(252)
@@ -96,18 +100,44 @@ def backtest_report(
     months=3,
     n=10,
     weight="equal",
+    method="log",
 ):
     X = features.xs(slice(test_start, test_end), level="date", drop_level=False)
     short_signal, long_signal = frame_to_signals(X, estimator)
     short_position, long_position, neutral_position = signals_to_positions(
         short_signal, long_signal, n, months, weight
     )
-    short_margin = position_to_margin(data, short_position, method="log")
-    neutral_margin = position_to_margin(data, neutral_position, method="log")
-    long_margin = position_to_margin(data, long_position, method="log")
-    print(f"Short positon sharpe ratio: {sharpe_ratio(short_margin)}")
-    short_margin.cumsum().rename("Short Only").plot()
-    print(f"Neutral positon sharpe ratio: {sharpe_ratio(neutral_margin)}")
-    neutral_margin.cumsum().rename("Short/Long").plot()
-    print(f"Long positon sharpe ratio: {sharpe_ratio(long_margin)}")
-    long_margin.cumsum().rename("Long Only").plot()
+    short_margin = position_to_margin(data, short_position, method=method)
+    neutral_margin = position_to_margin(data, neutral_position, method=method)
+    long_margin = position_to_margin(data, long_position, method=method)
+    dax_margin = idx_margin(data, neutral_margin, idx="DAX", method=method)
+    cac40_margin = idx_margin(data, neutral_margin, idx="CAC40", method=method)
+    stoxx50_margin = idx_margin(data, neutral_margin, idx="STOXX50", method=method)
+    cum_df = pd.DataFrame(
+        {
+            "Short Only": short_margin.cumsum(),
+            "Short/Long": neutral_margin.cumsum(),
+            "Long Only": long_margin.cumsum(),
+            "DAX": dax_margin.cumsum(),
+            "CAC40": cac40_margin.cumsum(),
+            "STOXX50": stoxx50_margin.cumsum(),
+        }
+    )
+    cum_df[["Short Only", "Short/Long", "Long Only"]].plot.line(
+        color={
+            "Short Only": "r",
+            "Short/Long": "k",
+            "Long Only": "g",
+        }
+    )
+    cum_df[["Long Only", "DAX", "CAC40", "STOXX50"]].plot.line(
+        color={
+            "Long Only": "k",
+            "DAX": "y",
+            "CAC40": "b",
+            "STOXX50": "m",
+        }
+    )
+    print(f"Short Only Sharpe Ratio: {sharpe_ratio(short_margin)}")
+    print(f"Short Long Sharpe Ratio: {sharpe_ratio(neutral_margin)}")
+    print(f"Long Only Sharpe Ratio: {sharpe_ratio(long_margin)}")
