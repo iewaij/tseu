@@ -10,7 +10,7 @@ from backtest import (
 
 
 def prepare_test_data():
-    raw = pd.read_parquet("../data/train-beta.1.parquet")
+    raw = pd.read_parquet("../data/raw-0.1.1.parquet")
     gvkeys = (
         raw[(raw.mcap > 1e6) & (raw.prccd > 5)].index.get_level_values("gvkey").unique()
     )
@@ -35,14 +35,14 @@ def test_frame_to_signals():
     long_clf = DummyClassifier(strategy="constant", constant=1)
     long_clf.fit(X, y)
     short_signal, long_signal = frame_to_signals(X, long_clf)
-    assert short_signal.unique() == np.array([0.0])
+    assert short_signal.empty is True
     assert long_signal.unique() == np.array([1.0])
     # short_clf only predict -1
     short_clf = DummyClassifier(strategy="constant", constant=-1)
     short_clf.fit(X, y)
     short_signal, long_signal = frame_to_signals(X, short_clf)
     assert short_signal.unique() == np.array([-1.0])
-    assert long_signal.unique() == np.array([0.0])
+    assert long_signal.empty is True
 
 
 def test_noise_to_belief():

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from pandas.tseries.offsets import DateOffset
 from sklearn.linear_model import LinearRegression
+import statsmodels.api as sm
 
 
 def frame_to_signals(X, estimator):
@@ -12,9 +13,9 @@ def frame_to_signals(X, estimator):
         short_array = estimator.predict(X)
         long_array = estimator.predict(X)
     short_signal = pd.Series(short_array, X.index)
-    short_signal = short_signal.where(short_signal < 0, 0)
+    short_signal = short_signal[short_signal < 0]
     long_signal = pd.Series(long_array, X.index)
-    long_signal = long_signal.where(long_signal > 0, 0)
+    long_signal = long_signal[long_signal > 0]
     return short_signal, long_signal
 
 
@@ -50,65 +51,60 @@ def signals_to_positions(short_signal, long_signal, months=3, n=10, weight="equa
     long_daily = monthly_to_daily(long_belief, months, weight)
     short_position = short_daily.groupby(["gvkey", "date"]).agg("sum")
     long_position = long_daily.groupby(["gvkey", "date"]).agg("sum")
-    neutral_position = (
-        pd.concat([short_position, long_position]).groupby(["gvkey", "date"]).agg("sum")
-    )
-    return short_position, long_position, neutral_position
+    return short_position, long_position
 
 
 def position_to_margin(data, position, tx=-0.001, method="percent"):
-    position = position.rename("position").to_frame()
-    merged = position.join(data)
-    merged["close"] = merged.close.groupby("gvkey").fillna(method="ffill")
-    merged["tx"] = np.where(position.shift(1) != position, tx, 0)
+    position, close = position.align(data.close, join="inner")
+    tx = np.where(position.shift(1) != position, tx, 0)
 
     if method == "log":
-        merged["margin"] = (
-            merged.close.groupby("gvkey")
-            .transform(lambda x: np.log(x / x.shift(1)))
-            .fillna(0)
-        )
+        margin = close.groupby("gvkey").transform(lambda x: np.log(x / x.shift(1)))
     elif method == "percent":
-        merged["margin"] = merged.close.groupby("gvkey").transform(
-            lambda x: x.pct_change(1)
-        )
+        margin = close.groupby("gvkey").transform(lambda x: x.pct_change(1))
 
-    margin = merged.position * merged.margin + merged.tx
-    margin = margin.droplevel("gvkey").resample("D").mean().fillna(0)
+    margin = position * margin + tx
+    margin = margin.droplevel("gvkey").resample("D").mean()
     return margin
 
 
 def idx_margin(data, margin, idx="DAX", method="percent"):
-    idx_close = data.loc[idx].reindex(margin.index, method="ffill").close
+    idx_close = data.close.loc[idx].reindex(margin.index, method="ffill")
     if method == "log":
         idx_margin = np.log(idx_close / idx_close.shift(1))
     elif method == "percent":
         idx_margin = idx_close.pct_change(1)
-    return idx_margin.fillna(0)
+    return idx_margin
 
 
 def sharpe_ratio(margin):
-    margin = margin[margin != 0]
+    margin = margin.dropna()
     return margin.mean() / margin.std() * np.sqrt(252)
 
 
-def max_drawdown_usd(data, position):
-    df = pd.DataFrame(
-        {"cumsumret": position_to_margin(data, position, tx=-0.001, method="percent")}
-    )
-    df["drawdown"] = df["cumsumret"] - df["cumsumret"].cummax()
-    drawdown_max = df["drawdown"].min()
+def max_drawdown(data, margin):
+    drawdown = margin.dropna() - margin.dropna().cummax()
+    drawdown_max = drawdown.min()
     return drawdown_max
 
 
-def benchmarking(margin, stoxx50_margin):
-    beta = margin.cov(stoxx50_margin) / stoxx50_margin.var()
-    alpha = (margin.mean() - beta * stoxx50_margin.mean()) * 252
+def capm_report(margin, market_margin):
+    r_p, r_m = margin.dropna().align(market_margin.dropna(), join="inner")
+    X = sm.add_constant(r_p)
+    y = r_m
+    model = sm.OLS(y, X)
+    results = model.fit()
+    print(results.summary())
+
+
+def capm(margin, market_margin):
+    beta = margin.cov(market_margin) / market_margin.var()
+    alpha = (margin.mean() - beta * market_margin.mean()) * 252
     return beta, alpha
 
 
-def backtest_report(
-    data,
+def test_backtest_report(
+    backtest_data,
     features,
     estimator,
     test_start="2012-01-01",
@@ -119,59 +115,94 @@ def backtest_report(
     method="percent",
 ):
     X = features.xs(slice(test_start, test_end), level="date", drop_level=False)
+    data = backtest_data.xs(slice(test_start, test_end), level="date", drop_level=False)
     short_signal, long_signal = frame_to_signals(X, estimator)
-    short_position, long_position, neutral_position = signals_to_positions(
+    short_position, long_position = signals_to_positions(
+        short_signal, long_signal, n, months, weight
+    )
+    return short_position, long_position
+    short_margin = position_to_margin(data, short_position, method=method)
+    long_margin = position_to_margin(data, long_position, method=method)
+    neutral_margin = short_margin + long_margin
+    market_margin = idx_margin(data, long_margin, idx="STOXX600", method=method)
+    return short_margin, long_margin, neutral_margin, market_margin
+
+
+def backtest_report(
+    backtest_data,
+    features,
+    estimator,
+    test_start="2012-01-01",
+    test_end="2016-01-01",
+    months=3,
+    n=10,
+    weight="equal",
+    method="percent",
+):
+    X = features.xs(slice(test_start, test_end), level="date", drop_level=False)
+    data = backtest_data.xs(slice(test_start, test_end), level="date", drop_level=False)
+    short_signal, long_signal = frame_to_signals(X, estimator)
+    short_position, long_position = signals_to_positions(
         short_signal, long_signal, n, months, weight
     )
     short_margin = position_to_margin(data, short_position, method=method)
-    neutral_margin = position_to_margin(data, neutral_position, method=method)
     long_margin = position_to_margin(data, long_position, method=method)
-    stoxx600_margin = idx_margin(data, neutral_margin, idx="STOXX600", method=method)
+    neutral_margin = short_margin + long_margin
+    market_margin = idx_margin(data, long_margin, idx="STOXX600", method=method)
 
     cum_df = pd.DataFrame(
         {
-            "Short Only": short_margin.cumsum(),
-            "Short/Long": neutral_margin.cumsum(),
-            "Long Only": long_margin.cumsum(),
-            "STOXX600": stoxx600_margin.cumsum(),
+            "Short Only": short_margin.fillna(0).cumsum(),
+            "Short Long": neutral_margin.fillna(0).cumsum(),
+            "Long Only": long_margin.fillna(0).cumsum(),
+            "STOXX600": market_margin.fillna(0).cumsum(),
         }
     )
-    cum_df[["Short Only", "Short/Long", "Long Only"]].plot.line(
+    cum_df[["Short Only", "Short Long", "Long Only"]].plot.line(
+        figsize=(12, 6),
         color={
             "Short Only": "r",
-            "Short/Long": "k",
+            "Short Long": "k",
             "Long Only": "g",
         },
+        xlabel="Date",
+        ylabel="Profit/Loss",
     )
     cum_df[["Long Only", "STOXX600"]].plot.line(
+        figsize=(12, 6),
         color={
             "Long Only": "g",
             "STOXX600": "m",
-        }
+        },
+        xlabel="Date",
+        ylabel="Profit/Loss",
     )
 
-    s_beta, s_alpha = benchmarking(short_margin, stoxx600_margin)
-    n_beta, n_alpha = benchmarking(neutral_margin, stoxx600_margin)
-    l_beta, l_alpha = benchmarking(long_margin, stoxx600_margin)
+    s_beta, s_alpha = capm(short_margin, market_margin)
+    n_beta, n_alpha = capm(neutral_margin, market_margin)
+    l_beta, l_alpha = capm(long_margin, market_margin)
 
     print("Short Only:")
-    print(f"Max Drawdown: {max_drawdown_usd(data, short_position)}")
+    print(f"Max Drawdown: {max_drawdown(data, short_margin)}")
     print(f"Sharpe : {sharpe_ratio(short_margin)}")
     print(f"Total Return: {short_margin.cumsum()[-1]}")
     print(f"Alpha: {s_alpha}")
     print(f"Beta: {s_beta}")
+    capm_report(short_margin, market_margin)
     print("----------------------------------------")
     print("Long Only:")
-    print(f"Max Drawdown: {max_drawdown_usd(data, long_position)}")
+    print(f"Max Drawdown: {max_drawdown(data, long_margin)}")
     print(f"Sharpe : {sharpe_ratio(long_margin)}")
     print(f"Total Return: {long_margin.cumsum()[-1]}")
     print(f"Alpha: {l_alpha}")
     print(f"Beta: {l_beta}")
+    capm_report(long_margin, market_margin)
     print("----------------------------------------")
     print("Market Neutral:")
-    print(f"Max Drawdown: {max_drawdown_usd(data, neutral_position)}")
+    print(f"Max Drawdown: {max_drawdown(data, neutral_margin)}")
     print(f"Sharpe : {sharpe_ratio(neutral_margin)}")
     print(f"Total Return: {neutral_margin.cumsum()[-1]}")
     print(f"Alpha: {n_alpha}")
     print(f"Beta: {n_beta}")
+    capm_report(neutral_margin, market_margin)
     print("----------------------------------------")
