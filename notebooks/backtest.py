@@ -79,6 +79,11 @@ def idx_margin(data, margin, idx="DAX", method="percent"):
     return idx_margin
 
 
+def bond_yield(data, margin, bond="DE10Y"):
+    bond_yield = data.close.loc[bond].reindex(margin.index, method="ffill")
+    return bond_yield
+
+
 def sharpe_ratio(margin):
     margin = margin.dropna()
     return margin.mean() / margin.std() * np.sqrt(252)
@@ -90,19 +95,21 @@ def max_drawdown(data, margin):
     return drawdown_max
 
 
-def capm_report(margin, market_margin):
-    r_p, r_m = margin.dropna().align(market_margin.dropna(), join="inner")
-    X = sm.add_constant(r_p)
-    y = r_m
-    model = sm.OLS(y, X)
-    results = model.fit()
-    print(results.summary())
-
-
 def capm(margin, market_margin):
     beta = margin.cov(market_margin) / market_margin.var()
     alpha = (margin.mean() - beta * market_margin.mean()) * 252
     return beta, alpha
+
+
+def capm_report(margin, market_margin):
+    monthly_margin = margin.resample("M").sum()
+    monthly_market_margin = market_margin.resample("M").sum()
+    r_p, r_m = monthly_margin.align(monthly_market_margin, join="inner")
+    X = sm.add_constant(r_m)
+    y = r_p
+    model = sm.OLS(y, X)
+    results = model.fit()
+    print(results.summary())
 
 
 def backtest_margin(
@@ -122,15 +129,18 @@ def backtest_margin(
     short_position, long_position = signals_to_positions(
         short_signal, long_signal, n, months, weight
     )
+    short_margin = position_to_margin(data, short_position, method=method)
     long_margin = position_to_margin(data, long_position, method=method)
-    return long_margin
+    neutral_margin = short_margin + long_margin
+    market_margin = idx_margin(data, long_margin, idx="STOXX600", method=method)
+    return short_margin, long_margin, neutral_margin, market_margin
 
 
 def backtest_report(
     backtest_data,
     features,
     estimator,
-    test_start="2011-12-01",
+    test_start="2015-12-01",
     test_end="2021-03-01",
     months=3,
     n=10,
@@ -156,6 +166,7 @@ def backtest_report(
             "STOXX600": market_margin.fillna(0).cumsum() * 100,
         }
     )
+
     ax = cum_df[["Short Only", "Short/Long", "Long Only"]].plot.line(
         figsize=(12, 6),
         color={
@@ -168,15 +179,6 @@ def backtest_report(
     )
     ax.yaxis.set_major_formatter(mtick.PercentFormatter())
     sns.despine(top=True, right=True)
-    # cum_df[["Long Only", "STOXX600"]].plot.line(
-    #     figsize=(12, 6),
-    #     color={
-    #         "Long Only": "g",
-    #         "STOXX600": "m",
-    #     },
-    #     xlabel="Date",
-    #     ylabel="Profit/Loss",
-    # )
 
     s_beta, s_alpha = capm(short_margin, market_margin)
     n_beta, n_alpha = capm(neutral_margin, market_margin)
@@ -186,20 +188,29 @@ def backtest_report(
     print(f"Max Drawdown: {max_drawdown(data, short_margin)}")
     print(f"Sharpe : {sharpe_ratio(short_margin)}")
     print(f"Total Return: {short_margin.cumsum()[-1]}")
-    print(f"Alpha: {s_alpha}")
-    print(f"Beta: {s_beta}")
-    print("----------------------------------------")
+    print(
+        "=============================================================================="
+    )
+    capm_report(short_margin, market_margin)
+    print(
+        "=============================================================================="
+    )
     print("Long Only:")
     print(f"Max Drawdown: {max_drawdown(data, long_margin)}")
     print(f"Sharpe : {sharpe_ratio(long_margin)}")
     print(f"Total Return: {long_margin.cumsum()[-1]}")
-    print(f"Alpha: {l_alpha}")
-    print(f"Beta: {l_beta}")
-    print("----------------------------------------")
+    print(
+        "=============================================================================="
+    )
+    capm_report(long_margin, market_margin)
+    print(
+        "=============================================================================="
+    )
     print("Market Neutral:")
     print(f"Max Drawdown: {max_drawdown(data, neutral_margin)}")
     print(f"Sharpe : {sharpe_ratio(neutral_margin)}")
     print(f"Total Return: {neutral_margin.cumsum()[-1]}")
-    print(f"Alpha: {n_alpha}")
-    print(f"Beta: {n_beta}")
-    print("----------------------------------------")
+    print(
+        "=============================================================================="
+    )
+    capm_report(neutral_margin, market_margin)
