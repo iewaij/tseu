@@ -93,9 +93,11 @@ def sharpe_ratio(margin):
 
 
 def max_drawdown_usd(data, position):
-    df = pd.DataFrame({"cumsumret" : position_to_margin(data, position, tx=-0.001, method="percent")})
+    df = pd.DataFrame(
+        {"cumsumret": position_to_margin(data, position, tx=-0.001, method="percent")}
+    )
     df["drawdown"] = df["cumsumret"] - df["cumsumret"].cummax()
-    drawdown_max = df['drawdown'].min()
+    drawdown_max = df["drawdown"].min()
     return drawdown_max
 
 
@@ -124,14 +126,14 @@ def backtest_report(
     short_margin = position_to_margin(data, short_position, method=method)
     neutral_margin = position_to_margin(data, neutral_position, method=method)
     long_margin = position_to_margin(data, long_position, method=method)
-    stoxx50_margin = idx_margin(data, neutral_margin, idx="STOXX50", method=method)
+    stoxx600_margin = idx_margin(data, neutral_margin, idx="STOXX600", method=method)
 
     cum_df = pd.DataFrame(
         {
             "Short Only": short_margin.cumsum(),
             "Short/Long": neutral_margin.cumsum(),
             "Long Only": long_margin.cumsum(),
-            "STOXX600": stoxx50_margin.cumsum(),
+            "STOXX600": stoxx600_margin.cumsum(),
         }
     )
     cum_df[["Short Only", "Short/Long", "Long Only"]].plot.line(
@@ -139,7 +141,7 @@ def backtest_report(
             "Short Only": "r",
             "Short/Long": "k",
             "Long Only": "g",
-        }
+        },
     )
     cum_df[["Long Only", "STOXX600"]].plot.line(
         color={
@@ -148,33 +150,28 @@ def backtest_report(
         }
     )
 
-    s_beta, s_alpha = benchmarking(short_margin, stoxx50_margin)
-    n_beta, n_alpha = benchmarking(neutral_margin, stoxx50_margin)
-    l_beta, l_alpha = benchmarking(long_margin, stoxx50_margin)
+    s_beta, s_alpha = benchmarking(short_margin, stoxx600_margin)
+    n_beta, n_alpha = benchmarking(neutral_margin, stoxx600_margin)
+    l_beta, l_alpha = benchmarking(long_margin, stoxx600_margin)
 
-    print(f"Short Only:")
+    print("Short Only:")
     print(f"Max Drawdown: {max_drawdown_usd(data, short_position)}")
     print(f"Sharpe : {sharpe_ratio(short_margin)}")
     print(f"Total Return: {short_margin.cumsum()[-1]}")
     print(f"Alpha: {s_alpha}")
     print(f"Beta: {s_beta}")
-    print(f"----------------------------------------")
-    print(f"")
-
-    print(f"Long Only:")
+    print("----------------------------------------")
+    print("Long Only:")
     print(f"Max Drawdown: {max_drawdown_usd(data, long_position)}")
     print(f"Sharpe : {sharpe_ratio(long_margin)}")
     print(f"Total Return: {long_margin.cumsum()[-1]}")
     print(f"Alpha: {l_alpha}")
     print(f"Beta: {l_beta}")
-    print(f"----------------------------------------")
-    print(f"")
-
-    print(f"Market Neutral:")
+    print("----------------------------------------")
+    print("Market Neutral:")
     print(f"Max Drawdown: {max_drawdown_usd(data, neutral_position)}")
     print(f"Sharpe : {sharpe_ratio(neutral_margin)}")
     print(f"Total Return: {neutral_margin.cumsum()[-1]}")
     print(f"Alpha: {n_alpha}")
     print(f"Beta: {n_beta}")
-    print(f"----------------------------------------")
-    print(f"")
+    print("----------------------------------------")
