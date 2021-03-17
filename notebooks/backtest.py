@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from pandas.tseries.offsets import DateOffset
 from sklearn.linear_model import LinearRegression
+import seaborn as sns
+import matplotlib.ticker as mtick
 import statsmodels.api as sm
 
 
@@ -103,12 +105,12 @@ def capm(margin, market_margin):
     return beta, alpha
 
 
-def test_backtest_report(
+def backtest_margin(
     backtest_data,
     features,
     estimator,
-    test_start="2012-01-01",
-    test_end="2016-01-01",
+    test_start="2011-12-01",
+    test_end="2021-03-01",
     months=3,
     n=10,
     weight="equal",
@@ -120,20 +122,16 @@ def test_backtest_report(
     short_position, long_position = signals_to_positions(
         short_signal, long_signal, n, months, weight
     )
-    return short_position, long_position
-    short_margin = position_to_margin(data, short_position, method=method)
     long_margin = position_to_margin(data, long_position, method=method)
-    neutral_margin = short_margin + long_margin
-    market_margin = idx_margin(data, long_margin, idx="STOXX600", method=method)
-    return short_margin, long_margin, neutral_margin, market_margin
+    return long_margin
 
 
 def backtest_report(
     backtest_data,
     features,
     estimator,
-    test_start="2012-01-01",
-    test_end="2016-01-01",
+    test_start="2011-12-01",
+    test_end="2021-03-01",
     months=3,
     n=10,
     weight="equal",
@@ -152,31 +150,33 @@ def backtest_report(
 
     cum_df = pd.DataFrame(
         {
-            "Short Only": short_margin.fillna(0).cumsum(),
-            "Short Long": neutral_margin.fillna(0).cumsum(),
-            "Long Only": long_margin.fillna(0).cumsum(),
-            "STOXX600": market_margin.fillna(0).cumsum(),
+            "Short Only": short_margin.fillna(0).cumsum() * 100,
+            "Short/Long": neutral_margin.fillna(0).cumsum() * 100,
+            "Long Only": long_margin.fillna(0).cumsum() * 100,
+            "STOXX600": market_margin.fillna(0).cumsum() * 100,
         }
     )
-    cum_df[["Short Only", "Short Long", "Long Only"]].plot.line(
+    ax = cum_df[["Short Only", "Short/Long", "Long Only"]].plot.line(
         figsize=(12, 6),
         color={
             "Short Only": "r",
-            "Short Long": "k",
+            "Short/Long": "k",
             "Long Only": "g",
         },
         xlabel="Date",
         ylabel="Profit/Loss",
     )
-    cum_df[["Long Only", "STOXX600"]].plot.line(
-        figsize=(12, 6),
-        color={
-            "Long Only": "g",
-            "STOXX600": "m",
-        },
-        xlabel="Date",
-        ylabel="Profit/Loss",
-    )
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter())
+    sns.despine(top=True, right=True)
+    # cum_df[["Long Only", "STOXX600"]].plot.line(
+    #     figsize=(12, 6),
+    #     color={
+    #         "Long Only": "g",
+    #         "STOXX600": "m",
+    #     },
+    #     xlabel="Date",
+    #     ylabel="Profit/Loss",
+    # )
 
     s_beta, s_alpha = capm(short_margin, market_margin)
     n_beta, n_alpha = capm(neutral_margin, market_margin)
@@ -188,7 +188,6 @@ def backtest_report(
     print(f"Total Return: {short_margin.cumsum()[-1]}")
     print(f"Alpha: {s_alpha}")
     print(f"Beta: {s_beta}")
-    capm_report(short_margin, market_margin)
     print("----------------------------------------")
     print("Long Only:")
     print(f"Max Drawdown: {max_drawdown(data, long_margin)}")
@@ -196,7 +195,6 @@ def backtest_report(
     print(f"Total Return: {long_margin.cumsum()[-1]}")
     print(f"Alpha: {l_alpha}")
     print(f"Beta: {l_beta}")
-    capm_report(long_margin, market_margin)
     print("----------------------------------------")
     print("Market Neutral:")
     print(f"Max Drawdown: {max_drawdown(data, neutral_margin)}")
@@ -204,5 +202,4 @@ def backtest_report(
     print(f"Total Return: {neutral_margin.cumsum()[-1]}")
     print(f"Alpha: {n_alpha}")
     print(f"Beta: {n_beta}")
-    capm_report(neutral_margin, market_margin)
     print("----------------------------------------")

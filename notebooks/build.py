@@ -2,37 +2,6 @@ import numpy as np
 import pandas as pd
 
 
-def superstition(df):
-    df.dropna(how="all", subset=["numest", "suescore", "medrec"], inplace=True)
-    df.eval(
-        """
-        diff_high = (prccd - ptghigh) / prccd
-        diff_med = (prccd - medptg) / prccd
-        diff_low = (prccd - ptglow) / prccd
-        """,
-        inplace=True,
-    )
-    return df.loc[
-        df.prccd > 5,
-        [
-            "numest",
-            "numdown1m",
-            "numup1m",
-            "diff_high",
-            "diff_med",
-            "diff_low",
-            "suescore",
-            "medrec",
-            "numdown",
-            "numup",
-            "numrec",
-            "buypct",
-            "holdpct",
-            "sellpct",
-        ],
-    ]
-
-
 def scale_features(features, method="rank"):
     if method == "rank":
         features = features.groupby("date").rank(pct=True).fillna(0.5)
