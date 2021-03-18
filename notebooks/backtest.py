@@ -89,16 +89,14 @@ def sharpe_ratio(margin):
     return margin.mean() / margin.std() * np.sqrt(252)
 
 
-def max_drawdown(data, margin):
-    drawdown = margin.dropna() - margin.dropna().cummax()
-    drawdown_max = drawdown.min()
-    return drawdown_max
-
-
-def capm(margin, market_margin):
-    beta = margin.cov(market_margin) / market_margin.var()
-    alpha = (margin.mean() - beta * market_margin.mean()) * 252
-    return beta, alpha
+def max_drawdown(margin):
+    cum_margin = margin.dropna().cumsum()
+    drawdown = cum_margin - cum_margin.cummax()
+    low_idx = drawdown.idxmin()
+    drawdown_max = drawdown[low_idx]
+    peak = cum_margin.cummax()[low_idx]
+    mdd = drawdown_max / peak
+    return mdd
 
 
 def capm_report(margin, market_margin):
@@ -157,7 +155,6 @@ def backtest_report(
     long_margin = position_to_margin(data, long_position, method=method)
     neutral_margin = short_margin + long_margin
     market_margin = idx_margin(data, long_margin, idx="STOXX600", method=method)
-
     cum_df = pd.DataFrame(
         {
             "Short Only": short_margin.fillna(0).cumsum() * 100,
@@ -180,12 +177,8 @@ def backtest_report(
     ax.yaxis.set_major_formatter(mtick.PercentFormatter())
     sns.despine(top=True, right=True)
 
-    s_beta, s_alpha = capm(short_margin, market_margin)
-    n_beta, n_alpha = capm(neutral_margin, market_margin)
-    l_beta, l_alpha = capm(long_margin, market_margin)
-
     print("Short Only:")
-    print(f"Max Drawdown: {max_drawdown(data, short_margin)}")
+    print(f"Max Drawdown: {max_drawdown(short_margin)}")
     print(f"Sharpe : {sharpe_ratio(short_margin)}")
     print(f"Total Return: {short_margin.cumsum()[-1]}")
     print(
@@ -196,7 +189,7 @@ def backtest_report(
         "=============================================================================="
     )
     print("Long Only:")
-    print(f"Max Drawdown: {max_drawdown(data, long_margin)}")
+    print(f"Max Drawdown: {max_drawdown(long_margin)}")
     print(f"Sharpe : {sharpe_ratio(long_margin)}")
     print(f"Total Return: {long_margin.cumsum()[-1]}")
     print(
@@ -207,7 +200,7 @@ def backtest_report(
         "=============================================================================="
     )
     print("Market Neutral:")
-    print(f"Max Drawdown: {max_drawdown(data, neutral_margin)}")
+    print(f"Max Drawdown: {max_drawdown(neutral_margin)}")
     print(f"Sharpe : {sharpe_ratio(neutral_margin)}")
     print(f"Total Return: {neutral_margin.cumsum()[-1]}")
     print(
