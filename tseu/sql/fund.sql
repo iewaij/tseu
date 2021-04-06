@@ -1,47 +1,29 @@
 SELECT
-    datadate AS date,
     gvkey,
-    loc AS country,
-    indfmt AS industry,
-    sich AS classification,
-    at,
-    act / NULLIF(lct, 0) AS curr_ratio,
-    (act - invt) / NULLIF(lct, 0) AS quick_ratio,
-    chee / NULLIF(lct, 0) AS cash_ratio,
-    oancf / NULLIF(lct, 0) AS opr_cashflow_ratio,
-    capx / NULLIF(oancf, 0) AS capx_cashflow_ratio,
-    (dlc + dltt) / NULLIF(ceq, 0) AS debt_equity_ratio,
-    (dltt + dlc) / NULLIF(at, 0) debt_asset_ratio,
-    at / NULLIF(ceq, 0) AS fin_leverage,
-    (dltt + dlc) / NULLIF(ebitda, 0) AS debt_ebitda_ratio,
-    (dltt + dlc - chee) / NULLIF(ebitda, 0) AS net_debt_ebitda_ratio,
-    ebit / NULLIF(xint, 0) AS ebit_int_coverage_ratio,
-    ebitda / NULLIF(xint, 0) AS ebitda_int_coverage_ratio,
-    ch / NULLIF(xint, 0) AS cash_coverage_ratio,
-    (dltt + dlc) / NULLIF(dltt + dlc + teq, 0) AS debt_total_cap_ratio,
-    oancf / NULLIF(dlc + dltt, 0) AS cashflow_debt_ratio,
-    cogs / NULLIF(invt, 0) AS invt_turnover,
-    cogs / NULLIF(ap, 0) AS accounts_payable_turnover,
-    revt / NULLIF(COALESCE(rect, artfs), 0) AS rec_turnover,
-    365 * invt / NULLIF(cogs, 0) AS days_sales_invt,
-    365 * ap / NULLIF(cogs, 0) AS days_sales_payable,
-    365 * NULLIF(COALESCE(rect, artfs), 0) / NULLIF(revt, 0) AS days_sales_receivable,
-    revt / NULLIF(ppent, 0) AS fixed_asset_turnover,
-    revt / NULLIF(at, 0) AS total_asset_turnover,
-    (revt - cogs) / NULLIF(revt, 0) AS gross_profit_margin,
-    ebitda / NULLIF(revt, 0) AS ebitda_margin,
-    ebit / NULLIF(revt, 0) AS ebit_margin,
-    pi / NULLIF(revt, 0) AS pre_tax_margin,
-    nicon / NULLIF(revt, 0) AS net_profit_margin,
-    nicon / NULLIF(at, 0) AS roa,
-    nicon / NULLIF(ceq, 0) AS roe,
-    COALESCE((ebit * (nicon / NULLIF(pi, 0))) / NULLIF(dlc + dltt + teq, 0), ebit * (1 - txt / NULLIF(pi, 0)) / NULLIF(icapt, 0)) AS roic,
-    COALESCE(epsexcon, nicon / NULLIF(cshpria, 0)) AS eps,
-    COALESCE(epsincon, (nicon + xido) / NULLIF(cshpria, 0)) AS eps_inextra,
-    fincf + ivncf + oancf AS cashflow,
-    xrd / NULLIF(revt, 0) AS rd_sales_ratio
+    LEAST(datadate + '3 months'::INTERVAL, pdate + '2 days'::INTERVAL)::DATE AS date,
+    loc,
+    sich AS sic,
+    LEFT(to_char(sich, '9999'), 3) AS sic_2,
+    -- Assets
+    rect,act,che,ch,ivst,ppegt,invt,aco,intan,ao,ppent,gdwl,icapt,ivaeq,ivao,mib,mibn,mibt,at AS att,
+    -- Liabilities
+    lse,lct,dlc,dltt,dltr,dltis,dlcch,ap,lco,lo,txdi,lt as ltt,
+    -- Equities and Others
+    teq,seq,ceq,pstk,emp,
+    -- Income Statement
+    sale,revt,cogs,xsga,dp,xrd,ib,ebitda,ebit,nopi,spi,pi,txp,nicon,txt,xint,dvc,dvt,sstk,
+    -- Cash Flow Statement and Others
+    capx,oancf,fincf,ivncf,prstkc,dv
 FROM
-    comp_global_daily.g_funda
+    comp.g_funda
 WHERE
     exchg = ANY (ARRAY [104, 107, 132, 151, 154, 171, 192, 194, 201, 209, 256, 257, 273, 276, 286])
-    AND curcd = 'EUR';
+    AND curcd = 'EUR'
+    AND datafmt = 'HIST_STD'
+    AND consol = 'C'
+    AND datadate >= '1999-01-01'
+    AND at IS NOT NULL
+    AND nicon IS NOT NULL
+ORDER BY
+    gvkey,
+    datadate;
