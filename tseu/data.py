@@ -1,22 +1,32 @@
+import os
+
 import numpy as np
 import pandas as pd
 import wrds
-from .config import Config
-from .compute import compute_fundamental, compute_price, compute_data
 
-config = Config()
+from .compute import compute_data, compute_fundamental, compute_price
 
 
-def query_wrds(sql_stmt):
-    with wrds.Connection(wrds_username=config.wrds_username) as db:
+def cache(func):
+    def wrapped_func(*args, **kwargs):
+        from datetime import date
+
+        table_name = func.__name__.split("_")[-1]
+        current_date = date.today().strftime("%Y%m%d")
+        parquet_path = f"./data/{table_name}-{current_date}.parquet"
+        try:
+            table = pd.read_parquet(parquet_path)
+        except FileNotFoundError:
+            table = func(*args, **kwargs)
+            table.to_parquet(parquet_path)
+        return table
+
+    return wrapped_func
+
+
+def query(sql_stmt, wrds_username):
+    with wrds.Connection(wrds_username=wrds_username) as db:
         data = db.raw_sql(sql_stmt, date_cols=["date"], index_col=["gvkey", "date"])
-    return data
-
-
-def query_sql(sql_path):
-    with open(sql_path) as sql:
-        sql_stmt = sql.read()
-    data = query_wrds(sql_stmt)
     return data
 
 
@@ -24,27 +34,38 @@ def wrangle_analyst(ana):
     ana["buypct"] = ana.buypct / 100
     ana["holdpct"] = ana.holdpct / 100
     ana["sellpct"] = ana.sellpct / 100
-    ana = ana.astype(
-        {
-            "numest": "Int64",
-            "ptgdown": "Int64",
-            "ptgup": "Int64",
-            "numrec": "Int64",
-            "recdown": "Int64",
-            "recup": "Int64",
-        }
-    )
     return ana
 
 
-def get_analyst():
-    filename = config.ana_parquet
-    try:
-        ana = pd.read_parquet(filename)
-    except FileNotFoundError:
-        ana = query_sql(config.ana_sql)
-        ana = wrangle_analyst(ana)
-        ana.to_parquet(filename)
+@cache
+def get_analyst(wrds_username):
+    ana_sql = """
+        SELECT
+            gvkey,
+            ptg.statpers AS date,
+            numest,
+            numdown1m AS ptgdown,
+            numup1m AS ptgup,
+            meanptg,
+            ptghigh,
+            ptglow,
+            numrec,
+            numdown AS recdown,
+            numup AS recup,
+            meanrec,
+            buypct,
+            holdpct,
+            sellpct
+        FROM
+            ibes.ptgsumu AS ptg
+            FULL JOIN ibes.recdsum AS rec ON ptg.statpers = rec.statpers AND ptg.ticker = rec.ticker
+            JOIN comp_global_daily.g_security AS sec ON ptg.ticker = sec.ibtic
+        WHERE
+            exchg = ANY (ARRAY [104, 132, 151, 154, 171, 172, 192, 194, 201, 209, 228, 256, 257, 273, 286])
+            AND curr = 'EUR';
+        """
+    ana = query(ana_sql, wrds_username)
+    ana = wrangle_analyst(ana)
     return ana
 
 
@@ -63,9 +84,9 @@ def resample_analyst(ana):
             "recdown": "sum",
             "recup": "sum",
             "meanrec": "mean",
-            "buypct": "last",
-            "holdpct": "last",
-            "sellpct": "last",
+            "buypct": "mean",
+            "holdpct": "mean",
+            "sellpct": "mean",
         }
     )
     return ana
@@ -82,14 +103,44 @@ def wrangle_fundamental(fund):
     return fund
 
 
-def get_fundamental():
-    filename = config.fund_parquet
-    try:
-        fund = pd.read_parquet(filename)
-    except FileNotFoundError:
-        fund = query_sql(config.fund_sql)
-        fund = wrangle_fundamental(fund)
-        fund.to_parquet(filename)
+@cache
+def get_fundamental(wrds_username):
+    fund_sql = """
+        SELECT
+            gvkey,
+            CASE WHEN pdate < datadate + '6 months'::INTERVAL THEN
+                pdate + '3 days'::INTERVAL
+            ELSE
+                datadate + '3 months'::INTERVAL END::DATE AS date,
+            loc,
+            sich AS sic,
+            LEFT(to_char(sich, '9999'), 3) AS sic_2,
+            -- Assets
+            rect,act,che,ch,ivst,ppegt,invt,aco,intan,ao,ppent,gdwl,icapt,ivaeq,ivao,mib,mibn,mibt,at AS att,
+            -- Liabilities
+            lse,lct,dlc,dltt,dltr,dltis,dlcch,ap,lco,lo,txdi,lt as ltt,
+            -- Equities and Others
+            teq,seq,ceq,pstk,emp,
+            -- Income Statement
+            sale,revt,cogs,xsga,dp,xrd,ib,ebitda,ebit,nopi,spi,pi,txp,nicon,txt,xint,dvc,dvt,sstk,
+            -- Cash Flow Statement and Others
+            capx,oancf,fincf,ivncf,prstkc,dv
+        FROM
+            comp.g_funda
+        WHERE
+            exchg = ANY (ARRAY [104, 107, 132, 151, 154, 171, 192, 194, 201, 209, 256, 257, 273, 276, 286])
+            AND curcd = 'EUR'
+            AND datafmt = 'HIST_STD'
+            AND consol = 'C'
+            AND datadate >= '1999-01-01'
+            AND at IS NOT NULL
+            AND nicon IS NOT NULL
+        ORDER BY
+            gvkey,
+            datadate;
+        """
+    fund = query(fund_sql, wrds_username)
+    fund = wrangle_fundamental(fund)
     return fund
 
 
@@ -117,14 +168,36 @@ def wrangle_price(prc):
     return prc
 
 
-def get_price():
-    filename = config.prc_parquet
-    try:
-        prc = pd.read_parquet(filename)
-    except FileNotFoundError:
-        prc = query_sql(config.prc_sql)
-        prc = wrangle_price(prc)
-        prc.to_parquet(filename)
+@cache
+def get_price(wrds_username):
+    prc_sql = """
+        SELECT
+            prc.gvkey,
+            prc.datadate AS date,
+            cshoc,
+            ajexdi,
+            prcod,
+            prchd,
+            prcld,
+            prccd,
+            cshtrd
+        FROM ( SELECT DISTINCT
+                gvkey,
+                iid
+            FROM
+                comp_global_daily.g_funda
+            WHERE
+                exchg = ANY (ARRAY [104, 132, 151, 154, 171, 172, 192, 194, 201, 209, 228, 256, 257, 273, 286])
+                AND curcd = 'EUR') AS fund
+            JOIN comp_global_daily.g_sec_dprc AS prc ON fund.gvkey = prc.gvkey AND fund.iid = prc.iid
+        WHERE
+            curcdd = 'EUR'
+            AND cshoc >= 0
+            AND cshtrd >= 0
+            AND datadate >= '1999-01-01';
+        """
+    prc = query(prc_sql, wrds_username)
+    prc = wrangle_price(prc)
     return prc
 
 
@@ -133,21 +206,16 @@ def resample_price(prc):
         [pd.Grouper(level="gvkey"), pd.Grouper(level="date", freq="M")]
     ).agg(
         {
-            "ajexdi": "last",
-            "prccd": "last",
-            "prccd": "last",
             "cshoc": "last",
+            "ajexdi": "last",
+            "prcod": "first",
+            "prchd": "max",
+            "prcld": "min",
+            "prccd": "last",
             "cshtrd": "sum",
         }
     )
     return prc
-
-
-def get_gvkeys(fund, prc):
-    gvkeys_fund = fund.index.get_level_values("gvkey").unique()
-    gvkeys_prc = prc[prc.prccd > 5].index.get_level_values("gvkey").unique()
-    gvkeys = np.intersect1d(gvkeys_prc, gvkeys_fund)
-    return gvkeys
 
 
 def filter_gvkeys(df, gvkeys):
@@ -155,57 +223,76 @@ def filter_gvkeys(df, gvkeys):
     return df.loc[idx, :]
 
 
-def get_data():
-    filename = config.data_parquet
-    try:
-        data = pd.read_parquet(filename)
-    except FileNotFoundError:
-        # extract data
-        ana = get_analyst()
-        fund = get_fundamental()
-        prc = get_price()
-        # filter gvkeys, compute features, and reindex or resample to monthly frequency
-        gvkeys = get_gvkeys(fund, prc)
-        ana = ana.pipe(filter_gvkeys, gvkeys).pipe(resample_analyst)
-        fund = (
-            fund.pipe(filter_gvkeys, gvkeys)
-            .pipe(compute_fundamental)
-            .pipe(reindex_fundamental)
-        )
-        prc = prc.pipe(filter_gvkeys, gvkeys).pipe(resample_price).pipe(compute_price)
-        # merge and compute features
-        data = prc.join([ana, fund]).pipe(compute_data)
-        # select rows with closing price > 5 and computed columns
-        col_prefixes = (
-            "analyst",
-            "accruals",
-            "efficiency",
-            "profitability",
-            "intangible",
-            "investment",
-            "leverage",
-            "liquidity",
-            "market",
-            "other",
-            "mom",
-            "ema",
-            "qt",
-            "scosc",
-            "rsi",
-            "std",
-            "sh",
-            "close",
-        )
-        data = data.loc[data.prccd > 5, data.columns.str.startswith(col_prefixes)]
-        data.to_parquet(filename)
+@cache
+def get_data(wrds_username=None):
+    # Extract data
+    ana = get_analyst(wrds_username)
+    fund = get_fundamental(wrds_username)
+    prc = get_price(wrds_username)
+    # Filter gvkeys to firms with closing price > 5
+    gvkeys = prc[prc.prccd > 5].index.get_level_values("gvkey").unique()
+    # Compute features and reindex or resample to monthly frequency
+    ana = ana.pipe(filter_gvkeys, gvkeys).pipe(resample_analyst)
+    fund = (
+        fund.pipe(filter_gvkeys, gvkeys)
+        .pipe(compute_fundamental)
+        .pipe(reindex_fundamental)
+    )
+    prc = prc.pipe(filter_gvkeys, gvkeys).pipe(resample_price).pipe(compute_price)
+    # Merge and compute features
+    data = prc.join([ana, fund]).pipe(compute_data)
+    # Select rows with closing price > 5, market cap > 1 million and computed columns
+    data = data.loc[
+        (data.prccd > 5) & (data.market_cap > 1e6),
+        data.columns.str.startswith(
+            (
+                "analyst",
+                "accruals",
+                "efficiency",
+                "profitability",
+                "intangible",
+                "investment",
+                "leverage",
+                "liquidity",
+                "market",
+                "other",
+                "mom",
+                "ema",
+                "qt",
+                "scosc",
+                "rsi",
+                "std",
+                "sh",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+            )
+        ),
+    ]
     return data
 
 
 def get_X():
     data = get_data()
-    return data.drop(columns="close").sort_index(axis=1)
+    return data.drop(
+        columns=[
+            "open",
+            "high",
+            "low",
+            "close",
+        ]
+    ).sort_index(axis=1)
 
 
 def get_y():
     data = get_data()
-    return data.close
+    return data[
+        [
+            "open",
+            "high",
+            "low",
+            "close",
+        ]
+    ]

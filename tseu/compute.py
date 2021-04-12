@@ -150,14 +150,12 @@ def compute_profitability(gf):
 
 
 def compute_other(gf):
-    gf = gf.assign(
-        other_size=gf.att,
-        other_ia=gf.att / gf.att.shift(1),
-        other_ir=gf.icapt.diff(1) / (gf.ebit * (gf.nicon / gf.pi)),
-        other_nopatgr=gf.icapt.diff(1) / gf.icapt,
-        other_rev_cagr_3=((gf.revt / gf.revt.shift(3)) ** (1 / 3)) - 1,
-        other_ebitda_cagr_3=((gf.ebitda / gf.ebitda.shift(3)) ** (1 / 3)) - 1,
-    )
+    gf["other_size"] = gf.att
+    gf["other_ia"] = gf.att / gf.att.shift(1)
+    gf["other_ir"] = gf.icapt.diff(1) / (gf.ebit * (gf.nicon / gf.pi))
+    gf["other_nopatgr"] = gf.icapt.diff(1) / gf.icapt
+    gf["other_rev_cagr_3"] = ((gf.revt / gf.revt.shift(3)) ** (1 / 3)) - 1
+    gf["other_ebitda_cagr_3"] = ((gf.ebitda / gf.ebitda.shift(3)) ** (1 / 3)) - 1
     return gf
 
 
@@ -192,15 +190,14 @@ def compute_gf(gf):
     )
 
 
-def compute_fundamental(df):
-    return parallel_apply(df, "gvkey", compute_gf)
+def compute_fundamental(fund):
+    return parallel_apply(fund, "gvkey", compute_gf)
 
 
-def compute_technical(gp):
-    gp["close"] = gp.prccd / gp.ajexdi
-    gp["mom_high_12m"] = 1 - gp.close / gp.close.rolling(12).max()
+def compute_gp(gp):
+    gp["mom_high_12m"] = 1 - gp.close / gp.high.rolling(12, min_periods=1).max()
     gp["mom_1m"] = gp.close.pct_change(1)
-    windows = [3, 6, 12, 24]
+    windows = [3, 6, 12, 24, 36, 48]
     for window in windows:
         std_window = gp.mom_1m.rolling(window).std()
         mean_window = gp.mom_1m.rolling(window).mean()
@@ -219,7 +216,12 @@ def compute_technical(gp):
 
 
 def compute_price(prc):
-    return parallel_apply(prc, "gvkey", compute_technical)
+    prc["low"] = prc.prcld / prc.ajexdi
+    prc["high"] = prc.prchd / prc.ajexdi
+    prc["close"] = prc.prccd / prc.ajexdi
+    prc["volume"] = prc.cshtrd
+    prc["other_price"] = prc.prccd
+    return parallel_apply(prc, "gvkey", compute_gp)
 
 
 def compute_data(data):

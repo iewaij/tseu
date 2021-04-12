@@ -57,7 +57,7 @@ def build_train_test(
     elif label == "regression":
         pass
     else:
-        raise NameError("The labelling method doesn't exist.")
+        raise NotImplementedError("The labelling method doesn't exist.")
 
     X_train = features.reindex(y_train.index)
     X_test = features.reindex(y_test.index)
